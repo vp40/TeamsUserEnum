@@ -13,7 +13,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 
 	color "github.com/fatih/color"
 )
@@ -87,27 +86,24 @@ func Parsefile(filenPath string, bearer string, verbose bool) {
 		log.Fatalf("failed to open")
 
 	}
-	sem := make(chan struct{}, 75)
+	sem := make(chan int, 75)
 	scanner := bufio.NewScanner(file)
-	var wg sync.WaitGroup
+	//var wg sync.WaitGroup
 	scanner.Split(bufio.ScanLines)
 	for scanner.Scan() {
 		line := scanner.Text()
-		wg.Add(1)
 		email := string(bytes.Trim([]byte(line), "\x00"))
-
 		email = strings.ToValidUTF8(email, "")
 		email = strings.Trim(email, "\r")
 		email = strings.Trim(email, "\n")
+		sem <- 1
 		go func(email string, bearer string, verbose bool) {
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			defer wg.Done()
+			//defer wg.Done()
 			Enumuser(email, bearer, verbose)
+			<-sem
 		}(email, bearer, verbose)
 
 	}
-	wg.Wait()
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
@@ -140,7 +136,8 @@ func getPresence(mri string, bearer string, verbose bool) (string, string) {
 	}
 
 	json.Unmarshal([]byte(body), &status)
-
-	return status[0].Presence.Availability, status[0].Presence.DeviceType
-
+	if len(status) > 0 {
+		return status[0].Presence.Availability, status[0].Presence.DeviceType
+	}
+	return "", ""
 }
